@@ -64,6 +64,7 @@ void getargs(int *port, int *threadCnt, int argc, char *argv[])
 
 void getBuffer(int *thConnfd){
 	*thConnfd = *(buffer + getHead);
+	*(buffer + getHead) = -1;
 	getHead = (getHead + 1) % bufferSize;
 
 }

@@ -59,7 +59,7 @@ void getargs(int *port, int *threadCnt, int argc, char *argv[])
 	if((bufferSize = atoi(argv[3])) <= 0)
 		fprintf(stderr, "Error. <buffers> must be > 0\n");
 
-	fprintf(stderr, "\nchk1");
+//	fprintf(stderr, "\nchk1");
 }
 
 void getBuffer(int *thConnfd){
@@ -83,7 +83,7 @@ void *consumeConn(){
 	
 
 		getBuffer(&thConnfd);
-		fprintf(stderr,"\nchk2");
+//		fprintf(stderr,"\nchk2");
 		pthread_cond_signal(&full);
 
 		requestHandle(thConnfd);

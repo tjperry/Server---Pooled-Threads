@@ -35,12 +35,12 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t full = PTHREAD_COND_INITIALIZER;
 pthread_cond_t empty = PTHREAD_COND_INITIALIZER;
 
-int threadsAvail;
+int setHead = 0;
+int getHead = 0;
 
-int *connBufferPushPtr;
-int *connBufferPullPtr;
-long int connBufferSize;
-long int connBufferStart;
+int *buffer;
+
+int bufferSize;
 
 // CS537: Parse the new arguments too
 void getargs(int *port, int *threadCnt, int argc, char *argv[])
@@ -50,33 +50,41 @@ void getargs(int *port, int *threadCnt, int argc, char *argv[])
 	exit(1);
 	}
 
-	*port = atoi(argv[1]);
-	*threadCnt = atoi(argv[2]);
-	threadsAvail  = atoi(argv[2]);
-	connBufferSize = atoi(argv[3]);
-	int connBuffer[connBufferSize];
-	connBufferPushPtr = connBuffer;
-	connBufferPullPtr = connBuffer;
-	connBufferStart = (long int)connBufferPushPtr;
+	if((*port = atoi(argv[1])) < 2000)
+		fprintf(stderr, "Error. <port> must be > 2000\n");
+	
+	if((*threadCnt = atoi(argv[2])) <= 0)
+		fprintf(stderr, "Error. <threads> must be > 0\n");
 
-	int i;
-	for( i = 0; i < (connBufferSize); i++ ){
-		connBuffer[i] = 0;
-	}
+	if((bufferSize = atoi(argv[3])) <= 0)
+		fprintf(stderr, "Error. <buffers> must be > 0\n");
+
+	fprintf(stderr, "\nchk1");
+}
+
+void getBuffer(int *thConnfd){
+	*thConnfd = *(buffer + getHead);
+	getHead = (getHead + 1) % bufferSize;
+
+}
+
+void setBuffer(int connfd){
+	*(buffer + setHead) = connfd;
+	setHead = (setHead + 1) % bufferSize;
 }
 
 void *consumeConn(){
 	int thConnfd = 0;
-	
-	while(1){		
+	while(1){	
 		pthread_mutex_lock(&lock);
-		while(*connBufferPullPtr == 0)
-			pthread_cond_wait(&full, &lock);
+		
+		while(*(buffer + getHead) == -1)
+			pthread_cond_wait(&empty, &lock);
+	
 
-		thConnfd = *connBufferPullPtr;
-		*connBufferPullPtr = 0;
-		connBufferPullPtr = (int *)(connBufferStart + ((((long int)connBufferPullPtr - connBufferStart) + 1) % (connBufferSize)));
-		pthread_cond_signal(&empty);
+		getBuffer(&thConnfd);
+		fprintf(stderr,"\nchk2");
+		pthread_cond_signal(&full);
 
 		requestHandle(thConnfd);
 		Close(thConnfd);
@@ -91,15 +99,18 @@ int main(int argc, char *argv[])
 	struct sockaddr_in clientaddr;
 
 	getargs(&port, &threadCnt, argc, argv);
+	buffer = malloc(sizeof(int) * bufferSize);	
+	int i;
+	for(i  = 0; i < bufferSize; i++)
+		*(buffer + i) = -1;
 
 	// 
 	// CS537: Create some threads...
 	//
-//	pthread_t p[threadCnt];
-//	int i;
-//	for(i = 0; i < threadCnt; i++ ){
-//		pthread_create(&(p[i]), NULL, consumeConn, NULL);
-//	}
+	pthread_t p[threadCnt];
+	for(i = 0; i < threadCnt; i++ ){
+		pthread_create(&(p[i]), NULL, consumeConn, NULL);
+	}
 
 	listenfd = Open_listenfd(port);
 	while (1) {
@@ -112,21 +123,14 @@ int main(int argc, char *argv[])
 		// do the work.
 		// 
 		pthread_mutex_lock(&lock);
-		while(*connBufferPushPtr != 0)
-			pthread_cond_wait(&empty, &lock);
+		while(*(buffer + setHead) != -1)
+			pthread_cond_wait(&full, &lock);
 		
-		*connBufferPushPtr = connfd;
-		connBufferPushPtr = (int *)(connBufferStart + ((((long int)connBufferPushPtr - connBufferStart) + 1) % (connBufferSize)));
-		fprintf(stderr, "%p = %ld + (((%p - %ld) + 1) mod (%ld))", connBufferPushPtr, connBufferStart, connBufferPushPtr, connBufferStart, connBufferSize);
-		pthread_cond_signal(&full);
+		setBuffer(connfd);
+
+		pthread_cond_signal(&empty);
 		pthread_mutex_unlock(&lock); 
 
 	}
-
-}
-
-
-    
-
-
- 
+	return 0;
+} 
